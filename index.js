@@ -1,15 +1,17 @@
-const { makeWASocket, useMultiFileAuthState, DisconnectReason } = require('@whiskeysockets/baileys');
+const { makeWASocket, useMultiFileAuthState, DisconnectReason, Browsers } = require('@whiskeysockets/baileys');
 
 async function startBot() {
   const { state, saveCreds } = await useMultiFileAuthState('auth_info');
+  
   const sock = makeWASocket({
     auth: state,
-    printQRInTerminal: false
+    printQRInTerminal: false,
+    // Setting an official browser signature prevents WhatsApp Business from rejecting the pairing
+    browser: Browsers.macOS('Desktop')
   });
 
   sock.ev.on('creds.update', saveCreds);
 
-  // Request 8-digit phone pairing code if not connected yet
   if (!sock.authState.creds.registered) {
     const phoneNumber = '256746685245'; 
     setTimeout(async () => {
@@ -21,7 +23,7 @@ async function startBot() {
       } catch (err) {
         console.log('Error requesting pairing code:', err);
       }
-    }, 5000);
+    }, 6000);
   }
 
   sock.ev.on('connection.update', (update) => {
