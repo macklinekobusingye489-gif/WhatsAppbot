@@ -1,5 +1,4 @@
 const { makeWASocket, useMultiFileAuthState, DisconnectReason } = require('@whiskeysockets/baileys');
-const qrcode = require('qrcode-terminal');
 
 async function startBot() {
   const { state, saveCreds } = await useMultiFileAuthState('auth_info');
@@ -10,12 +9,23 @@ async function startBot() {
 
   sock.ev.on('creds.update', saveCreds);
 
+  // Request 8-digit phone pairing code if not connected yet
+  if (!sock.authState.creds.registered) {
+    const phoneNumber = '256746685245'; 
+    setTimeout(async () => {
+      try {
+        const code = await sock.requestPairingCode(phoneNumber);
+        console.log('\n====================================');
+        console.log(`YOUR WHATSAPP PAIRING CODE: ${code}`);
+        console.log('====================================\n');
+      } catch (err) {
+        console.log('Error requesting pairing code:', err);
+      }
+    }, 5000);
+  }
+
   sock.ev.on('connection.update', (update) => {
-    const { connection, lastDisconnect, qr } = update;
-    if (qr) {
-      console.log('--- SCAN THIS QR CODE IN WHATSAPP ---');
-      qrcode.generate(qr, { small: true });
-    }
+    const { connection, lastDisconnect } = update;
     if (connection === 'close') {
       const shouldReconnect = lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut;
       if (shouldReconnect) startBot();
