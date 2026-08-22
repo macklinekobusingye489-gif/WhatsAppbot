@@ -1,5 +1,39 @@
 const { makeWASocket, useMultiFileAuthState, DisconnectReason, Browsers } = require('@whiskeysockets/baileys');
-const qrcode = require('qrcode-terminal');
+const express = require('express');
+const QRCode = require('qrcode');
+
+const app = express();
+const PORT = process.env.PORT || 3000;
+
+let currentQR = '';
+
+// Webpage to display the QR image directly
+app.get('/', async (req, res) => {
+  if (!currentQR) {
+    return res.send('<h2 style="font-family:sans-serif;text-align:center;margin-top:50px;">Waiting for QR Code... Please refresh in 5 seconds.</h2>');
+  }
+  try {
+    const qrImage = await QRCode.toDataURL(currentQR);
+    res.send(`
+      <!進入html>
+      <html>
+        <head>
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <title>WhatsApp Bot Pairing</title>
+        </head>
+        <body style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100vh;margin:0;font-family:sans-serif;background-color:#111;color:#fff;">
+          <h2>Scan with WhatsApp Business</h2>
+          <img src="${qrImage}" style="width:280px;height:280px;border:10px solid white;border-radius:12px;" />
+          <p style="margin-top:20px;color:#aaa;">Refresh page if code expires</p>
+        </body>
+      </html>
+    `);
+  } catch (err) {
+    res.status(500).send('Error generating QR image.');
+  }
+});
+
+app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
 
 async function startBot() {
   const { state, saveCreds } = await useMultiFileAuthState('auth_info');
@@ -12,19 +46,18 @@ async function startBot() {
 
   sock.ev.on('creds.update', saveCreds);
 
-  // Print small compact QR code in terminal logs
   sock.ev.on('connection.update', (update) => {
     const { connection, lastDisconnect, qr } = update;
     
     if (qr) {
-      console.log('\n--- SCAN THIS SMALL QR CODE ---');
-      qrcode.generate(qr, { small: true });
+      currentQR = qr;
     }
 
     if (connection === 'close') {
       const shouldReconnect = lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut;
       if (shouldReconnect) startBot();
     } else if (connection === 'open') {
+      currentQR = '';
       console.log('WhatsApp Bot connected successfully!');
     }
   });
