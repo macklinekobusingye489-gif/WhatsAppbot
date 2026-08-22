@@ -1,4 +1,5 @@
 const { makeWASocket, useMultiFileAuthState, DisconnectReason, Browsers } = require('@whiskeysockets/baileys');
+const qrcode = require('qrcode-terminal');
 
 async function startBot() {
   const { state, saveCreds } = await useMultiFileAuthState('auth_info');
@@ -6,28 +7,20 @@ async function startBot() {
   const sock = makeWASocket({
     auth: state,
     printQRInTerminal: false,
-    // Setting an official browser signature prevents WhatsApp Business from rejecting the pairing
     browser: Browsers.macOS('Desktop')
   });
 
   sock.ev.on('creds.update', saveCreds);
 
-  if (!sock.authState.creds.registered) {
-    const phoneNumber = '256746685245'; 
-    setTimeout(async () => {
-      try {
-        const code = await sock.requestPairingCode(phoneNumber);
-        console.log('\n====================================');
-        console.log(`YOUR WHATSAPP PAIRING CODE: ${code}`);
-        console.log('====================================\n');
-      } catch (err) {
-        console.log('Error requesting pairing code:', err);
-      }
-    }, 6000);
-  }
-
+  // Print small compact QR code in terminal logs
   sock.ev.on('connection.update', (update) => {
-    const { connection, lastDisconnect } = update;
+    const { connection, lastDisconnect, qr } = update;
+    
+    if (qr) {
+      console.log('\n--- SCAN THIS SMALL QR CODE ---');
+      qrcode.generate(qr, { small: true });
+    }
+
     if (connection === 'close') {
       const shouldReconnect = lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut;
       if (shouldReconnect) startBot();
