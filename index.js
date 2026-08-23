@@ -7,6 +7,7 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 let currentQR = '';
 
+// 1. Web interface for scanning QR
 app.get('/', async (req, res) => {
   if (!currentQR) {
     return res.send(`
@@ -38,11 +39,17 @@ app.get('/', async (req, res) => {
   } catch (err) { res.status(500).send('Error rendering QR image'); }
 });
 
+// 2. Free background keep-alive ping endpoint (0 AI calls, 0 cost)
+app.get('/ping', (req, res) => {
+  res.status(200).send('OK');
+});
+
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
 
 const conversationHistory = {};
 const documentContexts = {};
 
+// Helper: Similarity score for flexible name matching
 function getStringSimilarity(str1, str2) {
   const s1 = str1.toLowerCase().trim();
   const s2 = str2.toLowerCase().trim();
@@ -168,16 +175,25 @@ async function startBot() {
 
     const docContext = documentContexts[chatJid] ? `\n\nStudy Notes:\n${documentContexts[chatJid]}` : '';
 
+    // Global formatting instructions specifically tailored for WhatsApp rendering
+    const whatsappFormattingRules = `
+CRITICAL WHATSAPP FORMATTING RULES:
+- NEVER output raw LaTeX syntax (e.g. \\frac, \\sqrt, \\Rightarrow, \\cdot).
+- Format all math using clean Unicode and standard keyboard symbols (e.g., x², √, ±, π, *, /, +).
+- NEVER build Markdown tables with pipe bars (|). Convert data into bulleted lists instead.
+- Use single asterisks for bold text (*word*) and single underscores for italics (_word_). Never use double asterisks (**word**).
+- Keep code snippets inside clean triple backticks (\`\`\`code\`\`\`).`;
+
     let systemInstruction = '';
 
     if (isGroup) {
-      systemInstruction = `You are Jonah, a smart, relaxed guy in a study group. When people tag you, give clear, helpful student-style answers or explain lesson topics smoothly without sounding like a robotic tutor. Never greet repeatedly.${docContext}`;
+      systemInstruction = `You are Jonah, a smart, relaxed guy in a study group. When people tag you, give clear, helpful student-style answers or explain lesson topics smoothly without sounding like a robotic tutor. Never greet repeatedly.${docContext}\n${whatsappFormattingRules}`;
     } else if (isGirlfriend) {
       systemInstruction = `You are Jonah texting Mackline (call her "Macky"). 
 Tone: Extra casual, cool, unbothered, and relaxed. 
-Guidelines: Be friendly and smooth, but keep your responses concise and slightly laid-back. Never act needy, overly dramatic, eager, or jealous. Do not bring up relationship heavy topics or other people. Act completely secure, low-key, and natural like a real guy texting. Never sound like an AI assistant.${docContext}`;
+Guidelines: Be friendly and smooth, but keep your responses concise and slightly laid-back. Never act needy, overly dramatic, eager, or jealous. Do not bring up relationship heavy topics or other people. Act completely secure, low-key, and natural like a real guy texting. Never sound like an AI assistant.${docContext}\n${whatsappFormattingRules}`;
     } else {
-      systemInstruction = `You are Jonah texting 1-on-1. Respond as yourself: cool, relaxed, concise, and natural. Match the flow of the conversation based on past messages. Never use generic customer service greetings like "How can I help you?".${docContext}`;
+      systemInstruction = `You are Jonah texting 1-on-1. Respond as yourself: cool, relaxed, concise, and natural. Match the flow of the conversation based on past messages. Never use generic customer service greetings like "How can I help you?".${docContext}\n${whatsappFormattingRules}`;
     }
 
     // 6. Natural 5-Second Delay & Reply Execution
