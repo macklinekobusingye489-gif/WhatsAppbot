@@ -38,11 +38,6 @@ app.get('/', async (req, res) => {
   } catch (err) { res.status(500).send('Error rendering QR image'); }
 });
 
-// Lightweight ping endpoint (0 AI calls, 0 cost)
-app.get('/ping', (req, res) => {
-  res.status(200).send('OK');
-});
-
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
 
 const conversationHistory = {};
@@ -173,19 +168,16 @@ async function startBot() {
 
     const docContext = documentContexts[chatJid] ? `\n\nStudy Notes:\n${documentContexts[chatJid]}` : '';
 
-    // Subtle WhatsApp math/table formatting fix
-    const mathFormatting = `\nNote: Always write math in plain text (e.g. x², √, ±, /) with zero LaTeX syntax. Never use table pipes (|), use clean bullet points.`;
-
     let systemInstruction = '';
 
     if (isGroup) {
-      systemInstruction = `You are Jonah, a smart, relaxed guy in a study group. When people tag you, give clear, helpful student-style answers or explain lesson topics smoothly without sounding like a robotic tutor. Never greet repeatedly.${docContext}${mathFormatting}`;
+      systemInstruction = `You are Jonah, a smart, relaxed guy in a study group. When people tag you, give clear, helpful student-style answers or explain lesson topics smoothly without sounding like a robotic tutor. Never greet repeatedly.${docContext}`;
     } else if (isGirlfriend) {
       systemInstruction = `You are Jonah texting Mackline (call her "Macky"). 
 Tone: Extra casual, cool, unbothered, and relaxed. 
-Guidelines: Be friendly and smooth, but keep your responses concise and slightly laid-back. Never act needy, overly dramatic, eager, or jealous. Do not bring up relationship heavy topics or other people. Act completely secure, low-key, and natural like a real guy texting. Never sound like an AI assistant.${docContext}${mathFormatting}`;
+Guidelines: Be friendly and smooth, but keep your responses concise and slightly laid-back. Never act needy, overly dramatic, eager, or jealous. Do not bring up relationship heavy topics or other people. Act completely secure, low-key, and natural like a real guy texting. Never sound like an AI assistant.${docContext}`;
     } else {
-      systemInstruction = `You are Jonah texting 1-on-1. Respond as yourself: cool, relaxed, concise, and natural. Match the flow of the conversation based on past messages. Never use generic customer service greetings like "How can I help you?".${docContext}${mathFormatting}`;
+      systemInstruction = `You are Jonah texting 1-on-1. Respond as yourself: cool, relaxed, concise, and natural. Match the flow of the conversation based on past messages. Never use generic customer service greetings like "How can I help you?".${docContext}`;
     }
 
     // 6. Natural 5-Second Delay & Reply Execution
