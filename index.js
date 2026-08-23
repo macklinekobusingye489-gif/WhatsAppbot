@@ -7,17 +7,40 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 let currentQR = '';
 
+// Webpage auto-refreshes every 15 seconds so the QR code is never stale
 app.get('/', async (req, res) => {
-  if (!currentQR) return res.send('<h2 style="font-family:sans-serif;text-align:center;margin-top:50px;">Bot is connected!</h2>');
+  if (!currentQR) {
+    return res.send(`
+      <html>
+        <head><meta http-equiv="refresh" content="5"></head>
+        <body style="display:flex;justify-content:center;align-items:center;height:100vh;background:#111;color:white;font-family:sans-serif;">
+          <h2>Bot connected or generating new QR code... checking in 5s</h2>
+        </body>
+      </html>
+    `);
+  }
   try {
     const qrImage = await QRCode.toDataURL(currentQR);
-    res.send(`<body style="display:flex;justify-content:center;align-items:center;height:100vh;background:#111;"><img src="${qrImage}" style="width:280px;height:280px;border:10px solid white;border-radius:12px;"/></body>`);
-  } catch (err) { res.status(500).send('Error'); }
+    res.send(`
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <meta http-equiv="refresh" content="15">
+          <title>Scan WhatsApp QR</title>
+        </head>
+        <body style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100vh;margin:0;font-family:sans-serif;background-color:#111;color:#fff;">
+          <h2>Scan with WhatsApp Business</h2>
+          <img src="${qrImage}" style="width:280px;height:280px;border:10px solid white;border-radius:12px;" />
+          <p style="margin-top:15px;color:#00ff88;">Auto-refreshing live code...</p>
+        </body>
+      </html>
+    `);
+  } catch (err) { res.status(500).send('Error rendering QR image'); }
 });
 
-app.listen(PORT, () => console.log(`Server on port ${PORT}`));
+app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
 
-// Store extracted document text per chat JID
 const documentContexts = {};
 
 async function queryGemini(prompt, systemInstruction) {
@@ -40,18 +63,28 @@ async function queryGemini(prompt, systemInstruction) {
 }
 
 async function startBot() {
-  const { state, saveCreds } = await useMultiFileAuthState('auth_info');
-  const sock = makeWASocket({ auth: state, printQRInTerminal: false, browser: Browsers.macOS('Desktop') });
+  // Using fresh session storage
+  const { state, saveCreds } = await useMultiFileAuthState('auth_info_v3');
+  
+  const sock = makeWASocket({
+    auth: state,
+    printQRInTerminal: false,
+    browser: Browsers.macOS('Desktop')
+  });
+
   sock.ev.on('creds.update', saveCreds);
 
   sock.ev.on('connection.update', (update) => {
     const { connection, lastDisconnect, qr } = update;
+    
     if (qr) currentQR = qr;
+
     if (connection === 'close') {
-      if (lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut) startBot();
+      const shouldReconnect = lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut;
+      if (shouldReconnect) startBot();
     } else if (connection === 'open') {
       currentQR = '';
-      console.log('Bot Connected!');
+      console.log('WhatsApp Bot connected successfully!');
     }
   });
 
@@ -63,7 +96,6 @@ async function startBot() {
     const chatJid = msg.key.remoteJid;
     const isGroup = chatJid.endsWith('@g.us');
 
-    // 1. Handle Document Uploads (.pdf or .txt)
     const docMessage = msg.message.documentMessage || msg.message.documentWithCaptionMessage?.message?.documentMessage;
     if (docMessage) {
       try {
@@ -78,7 +110,7 @@ async function startBot() {
         }
 
         if (extractedText) {
-          documentContexts[chatJid] = extractedText.slice(0, 15000); // Store up to ~15k chars
+          documentContexts[chatJid] = extractedText.slice(0, 15000);
           await sock.sendMessage(chatJid, { text: '📚 Document analyzed! Ask me any questions about it.' });
           return;
         }
@@ -88,11 +120,9 @@ async function startBot() {
       }
     }
 
-    // 2. Extract Message Text
     const text = msg.message.conversation || msg.message.extendedTextMessage?.text || msg.message.imageMessage?.caption || '';
     if (!text.trim()) return;
 
-    // 3. Define System Instructions based on Chat Type & Context
     let systemInstruction = '';
     const docContext = documentContexts[chatJid] ? `\n\nStudy Notes:\n${documentContexts[chatJid]}` : '';
 
@@ -102,7 +132,6 @@ async function startBot() {
       systemInstruction = `You are a friendly, natural chat companion speaking 1-on-1. Respond like a real peer. Keep answers warm, concise, and conversational.${docContext}`;
     }
 
-    // 4. Send Query to Gemini and Reply
     try {
       const reply = await queryGemini(text, systemInstruction);
       await sock.sendMessage(chatJid, { text: reply });
